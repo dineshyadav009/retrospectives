@@ -1,10 +1,6 @@
-require 'retrospectives/utils'
-require 'google_drive'
-require 'jira-ruby'
-require 'set'
-
 module Retrospectives
   class RetroSetup
+
 
     attr_reader :hours_logged, :tickets, :members, :start_time, :end_time, :retrospective_sheet_key,
                 :google_client, :jira_client, :sprint_delimiter_index, :hours_spent_index,
@@ -32,7 +28,7 @@ module Retrospectives
       return if tickets_array.nil?
 
       tickets = Set.new
-      tickets_array.each { |ticket| tickets.add(Utils.clean(new Ticket(ticket))) }
+      tickets_array.each { |ticket| tickets.add(Utils.clean(Ticket.new(ticket))) }
     end
 
     def members=(members_array)

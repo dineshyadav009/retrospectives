@@ -1,5 +1,3 @@
-require 'retrospectives/utils'
-
 module Retrospectives
   class FetchHours
     def self.from_timesheet(retro)

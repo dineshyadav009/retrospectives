@@ -3,11 +3,11 @@ module Retrospectives
 
     def self.validate_params(params, keys)
       keys.each do |key|
-        raise 'Required key missing [#{key}]' if params.exclude?(key) || params[key].strip.empty?
+        raise 'Required key missing [#{key}]' if !params.include?(key) || params[key].strip.empty?
       end
     end
 
-    def clean(string)
+    def self.clean(string)
       begin
         string.to_s.tr('"','').strip.chomp
       rescue NoMethodError

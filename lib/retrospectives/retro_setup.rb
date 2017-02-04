@@ -2,7 +2,7 @@ module Retrospectives
   class RetroSetup
 
     attr_reader :hours_logged, :tickets, :members, :start_time, :end_time, :google_client,
-                :jira_client
+                :jira_client, :simple_jira_wrapper
 
     attr_accessor :sprint_delimiter_index, :hours_spent_index, :retrospective_sheet_key,
                   :ticket_id_index, :include_other_tickets
@@ -15,6 +15,7 @@ module Retrospectives
 
       @members = Set.new
       @tickets = Set.new
+
     end
 
     def authenticate_google_drive(config_path)
@@ -23,6 +24,10 @@ module Retrospectives
 
     def authenticate_jira(options)
       @jira_client = JIRA::Client.new(options)
+    end
+
+    def authenticate_simple_jira(options)
+      @simple_jira_wrapper = JIRAWrapper.new(options)
     end
 
     def tickets=(tickets_array)

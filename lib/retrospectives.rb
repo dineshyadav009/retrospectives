@@ -1,4 +1,5 @@
 require 'retrospectives/fetch_hours'
+require 'retrospectives/jira_wrapper'
 require 'retrospectives/member'
 require 'retrospectives/retro_setup'
 require 'retrospectives/ticket'

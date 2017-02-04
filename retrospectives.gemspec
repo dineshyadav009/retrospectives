@@ -35,4 +35,5 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'google_drive', '~> 2.1', '>= 2.1.2'
   spec.add_dependency 'jira-ruby', '~> 1.2', '>= 1.2.0'
+  spec.add_dependency 'typhoeus', '~> 1.1', '>= 1.1.2'
 end

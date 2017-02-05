@@ -1,4 +1,3 @@
-require 'typhoeus'
 include Typhoeus
 
 module Retrospectives

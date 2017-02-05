@@ -7,7 +7,7 @@ require 'retrospectives/utils'
 require 'retrospectives/version'
 require 'google_drive'
 require 'jira-ruby'
+require 'typhoeus'
 require 'set'
-
 
 module Retrospectives; end

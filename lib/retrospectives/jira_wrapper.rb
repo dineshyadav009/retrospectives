@@ -40,7 +40,7 @@ module Retrospectives
       request_params = {'fields' => params}
 
       begin
-        resp = Request.put(url, body: params.to_json, headers: headers, userpwd: auth)
+        resp = Request.put(url, body: request_params.to_json, headers: HEADERS, userpwd: auth)
         puts "Response code for #{ticket_id} : #{resp.code}" if @debug
         resp
       rescue StandardError => e
@@ -49,11 +49,11 @@ module Retrospectives
     end
 
     def update_assignee(new_assignee, ticket_id)
-      raise "params empty" if(params.nil? || params.empty?)
+      raise 'new assignee cannot be nil' if new_assignee.nil?
 
       url = @domain + JIRA_ISSUE_API + ticket_id
       auth = @username + ':' + @password
-      params = {'fields' => {'assignee' => {'name' => new_assignee}}}
+      params = {'assignee' => {'name' => new_assignee}}
 
       update_custom_field(params, ticket_id)
     end

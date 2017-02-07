@@ -6,7 +6,7 @@ module Retrospectives
     attr_accessor :debug
 
     JIRA_ISSUE_API = '/rest/api/2/issue/'
-    WORKLOG_PATH = 'worklog'
+    WORKLOG_PATH = '/worklog'
     HEADERS = {'content-type' => 'application/json'}
 
     def initialize(options)

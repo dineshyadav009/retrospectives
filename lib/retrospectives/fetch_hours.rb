@@ -27,12 +27,23 @@ module Retrospectives
     def self.from_jira(retro)
       retro.tickets.each do |ticket|
         retry_attempts = 0
+        skip = false
+
+        retro.ignore_issues_starting_with.each do |issue_key|
+          if ticket.start_with? issue_key
+            skip = true
+            break
+          end
+        end
+
+        next("Skipping for JIRA calls #{ticket.id}") if skip == true
+
         begin
           issue = retro.jira_client.Issue.find(ticket.id)
         rescue
-          puts "WARNING : timeout [#{ticket}]. Skipping..."
+          puts "WARNING : timeout [#{ticket.id}]. Skipping..."
           retry_attempts += 1
-          if retry_attempts < 10
+          if retry_attempts < 3
             retry
           end
           if issue.nil?
@@ -44,7 +55,7 @@ module Retrospectives
         ticket.type = issue.attrs['fields']['issuetype']['name']
         ticket.story_points = issue.attrs['fields']['customfield_10004']
         ticket.status = issue.attrs['fields']['status']['name']
-        get_jira_hours(ticket, retro, issue.attrs['fields']['worklog'])
+        fetch_and_store_jira_hours(ticket, retro)
       end
     end
 
@@ -69,11 +80,15 @@ module Retrospectives
       false
     end
 
-    def self.get_jira_hours(ticket, retro, worklogs)
-      # total_hours = 0.0
-      # hours_logged_by_person = Hash.new(0)
+    def self.fetch_and_store_jira_hours(ticket, retro)
+      worklogs = retro.simple_jira_wrapper.get_worklog(ticket)
 
       worklogs['worklogs'].each do |worklog|
+        worklog_date = Date.parse(worklog['updated']).to_s
+        worklog_id = worklog['self'].split('/').last
+
+        next("Ignoring #{ticket} #{worklog_id}") if(worklog_date > retro.end_date || worklog_date < retro.start_date)
+
         author = worklog['author']['name']
         time_in_hours = (worklog['timeSpentSeconds'] / 3600.0).round(2)
 

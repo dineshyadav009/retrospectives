@@ -8,6 +8,8 @@ require 'retrospectives/version'
 require 'google_drive'
 require 'jira-ruby'
 require 'typhoeus'
+require 'json'
+require 'date'
 require 'set'
 
 module Retrospectives; end

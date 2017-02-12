@@ -5,8 +5,8 @@ module Retrospectives
         sheet = retro.google_client.spreadsheet_by_key(member.sheet_key).
         worksheets[member.sheet_index]
 
-        start_row = get_row(sheet, retro, retro.start_time)
-        end_row = get_row(sheet, retro, retro.end_time)
+        start_row = get_row(sheet, retro, retro.start_date.to_s.gsub('-',''))
+        end_row = get_row(sheet, retro, retro.end_date.to_s.gsub('-',''))
 
         raise "Sprint not marked correctly for #{member.name}"  if start_row.nil? || end_row.nil?
 
@@ -30,7 +30,7 @@ module Retrospectives
         skip = false
 
         retro.ignore_issues_starting_with.each do |issue_key|
-          if ticket.start_with? issue_key
+          if ticket.id.start_with? issue_key
             skip = true
             break
           end
@@ -41,13 +41,13 @@ module Retrospectives
         begin
           issue = retro.jira_client.Issue.find(ticket.id)
         rescue
-          puts "WARNING : timeout [#{ticket.id}]. Skipping..."
+          Retrospectives::logger.info("WARNING : timeout [#{ticket.id}]. Retry [#{retry_attempts / 3}]")
           retry_attempts += 1
           if retry_attempts < 3
             retry
           end
           if issue.nil?
-            puts "WARNING : Issue details not found [#{ticket.inspect}]. Skipping..."
+            Retrospectives::logger.info("WARNING : Issue details not found [#{ticket.inspect}]. Skipping...")
             next
           end
         end
@@ -81,10 +81,10 @@ module Retrospectives
     end
 
     def self.fetch_and_store_jira_hours(ticket, retro)
-      worklogs = retro.simple_jira_wrapper.get_worklog(ticket)
+      worklogs = retro.simple_jira_wrapper.get_worklog(ticket.id)
 
       worklogs['worklogs'].each do |worklog|
-        worklog_date = Date.parse(worklog['updated']).to_s
+        worklog_date = Date.parse(worklog['started'])
         worklog_id = worklog['self'].split('/').last
 
         next("Ignoring #{ticket} #{worklog_id}") if(worklog_date > retro.end_date || worklog_date < retro.start_date)
@@ -94,7 +94,7 @@ module Retrospectives
 
         retro.members.each do |member|
           member.hours_spent_jira[ticket.id] += time_in_hours if member.name == author
-          ticket.hours_logged[author] += time_in_hours
+          ticket.hours_logged['total'] += time_in_hours
         end
       end
     end

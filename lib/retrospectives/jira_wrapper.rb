@@ -22,10 +22,10 @@ module Retrospectives
 
       begin
         resp = Typhoeus::Request.post(url, body: params.to_json, headers: HEADERS, userpwd: @auth)
-        puts "Response code for #{ticket_id} : #{resp.code}" if @debug
+        Retrospectives::logger.debug("Response code for #{ticket_id} : #{resp.code}")
         resp
       rescue StandardError => e
-        puts "Exception #{e.message} for #{ticket_id}"
+        Retrospectives::logger.info("Exception #{e.message} for #{ticket_id}")
       end
     end
 
@@ -37,10 +37,10 @@ module Retrospectives
 
       begin
         resp = Typhoeus::Request.put(url, body: request_params.to_json, headers: HEADERS, userpwd: @auth)
-        puts "Response code for #{ticket_id} : #{resp.code}" if @debug
+        Retrospectives::logger.debug("Response code for #{ticket_id} : #{resp.code}")
         resp
       rescue StandardError => e
-        puts "Exception #{e.message} for #{ticket_id}"
+        Retrospectives::logger.info("Exception #{e.message} for #{ticket_id}")
       end
     end
 
@@ -58,10 +58,10 @@ module Retrospectives
 
       begin
         resp = Typhoeus::Request.get(url, headers: HEADERS, userpwd: @auth)
-        puts "Response code for #{ticket_id} : #{resp.code}" if @debug
+        Retrospectives::logger.debug("Response code for #{ticket_id} : #{resp.code}")
         JSON.parse(resp.body)
       rescue StandardError => e
-        puts "Exception #{e.message} for #{ticket_id}"
+        Retrospectives::logger.info("Exception #{e.message} for #{ticket_id}")
       end
     end
   end

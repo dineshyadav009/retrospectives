@@ -1,11 +1,12 @@
 module Retrospectives
   class RetroSetup
 
-    attr_reader :hours_logged, :tickets, :members, :start_date, :end_date, :google_client,
+    attr_reader :hours_logged, :members, :start_date, :end_date, :google_client,
                 :jira_client, :simple_jira_wrapper
 
-    attr_accessor :sprint_delimiter_index, :hours_spent_index, :retrospective_sheet_key,
-                  :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with, :sprint_id
+    attr_accessor :tickets, :sprint_delimiter_index, :hours_spent_index, :retrospective_sheet_key,
+                  :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with,
+                  :sprint_id, :sprint_sheet_obj
 
     def initialize
       @ticket_id_index = 1
@@ -38,7 +39,11 @@ module Retrospectives
       @ignore_issues_starting_with = param if param.is_a?(Array)
     end
 
-    def tickets=(tickets_array)
+    def get_tickets_from_sprint_sheet(sheet_key, sheet_title)
+      @sprint_sheet_obj = SprintSheet.new(self, sheet_key, sheet_title)
+    end
+
+    def add_tickets=(tickets_array)
       return if tickets_array.nil?
 
       @tickets = Set.new
@@ -88,13 +93,20 @@ module Retrospectives
 
       Retrospectives::logger.info('Validated Prerequisites')
 
+      unless sprint_sheet_obj.nil?
+        sprint_sheet_obj.parse_data
+        Retrospectives::logger.info('Fetched tickets from sprint sheet')
+        return
+      end
+
+
       FetchHours.from_timesheet(self)
       Retrospectives::logger.info('Fetched data from timesheet')
 
       FetchHours.from_jira(self)
       Retrospectives::logger.info('Fetched data from JIRA')
 
-      rows = generate_retro_sheet_tickets
+      generate_retro_sheet_tickets
       generate_retro_sheet_summary
 
       Retrospectives::logger.info('Generated retrospective sheet, CTRL + Click to view')
@@ -102,18 +114,15 @@ module Retrospectives
       rows
     end
 
+    def validate_members_array(members_arr)
+      s_keys = Set.new
 
-    private
-
-    def validate_members_array(members_array)
-      sheet_keys = Set.new
-
-      members_array.each do |member|
+      members_arr.each do |member|
         Utils.validate_params(member, [:name, :sheet_key])
-        sheet_keys.add(member[:sheet_key].strip)
+        s_keys.add(member[:sheet_key].strip)
       end
 
-      raise 'Duplicate sheet key found in members array' unless sheet_keys.length == members_array.length
+      raise 'Duplicate sheet key found in members array' unless s_keys.length == members_arr.length
     end
 
     def key_already_exists(new_member)
@@ -152,17 +161,17 @@ module Retrospectives
       all_rows = Array.new
 
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
-      headers = ['Ticket id', 'Description', 'Story type', 'Story points', 'Owner',
-                 'Participants', 'Status']
+      # headers = ['Ticket id', 'Description', 'Story type', 'Story points', 'Owner',
+      #            'Participants', 'Owner hours', 'Status', 'Comments']
 
-      headers.push('Total hrs (JIRA)')
-      headers.push('Total hrs (Timesheet)')
+      # headers.push('Total hrs (JIRA)')
+      # headers.push('Total hrs (Timesheet)')
 
-      @members.each { |member| headers.push("Hrs (J) [#{member.name.split('.').first}]") }
+      # #@members.each { |member| headers.push("Hrs (J) [#{member.name.split('.').first}]") }
 
-      @members.each { |member| headers.push("Hrs (T) [#{member.name.split('.').first}]") }
+      # @members.each { |member| headers.push("Hrs (T) [#{member.name.split('.').first}]") }
 
-      all_rows.push(headers)
+      # all_rows.push(headers)
 
       @tickets.to_a.each do |ticket|
         ticket_row = []
@@ -172,7 +181,7 @@ module Retrospectives
         member_hours_timesheet = []
         participants = Hash.new(0)
 
-        ticket_row.push(ticket.id, ticket.description, ticket.type, '0')
+        ticket_row.push(ticket.id, ticket.description, ticket.type, ticket.story_points)
 
         @members.each do |member|
           member_hours_jira.push(member.hours_spent_jira[ticket.id].round(2) || 0)
@@ -187,19 +196,25 @@ module Retrospectives
           participants[member.name] = timesheet_hours_for_member unless timesheet_hours_for_member.to_f.zero?
         end
 
-        Retrospectives::logger.info("Doing for #{ticket.id}, participants : #{participants.inspect}")
+        Retrospectives::logger.debug("Doing for #{ticket.id}, participants : #{participants.inspect}")
 
-        if participants.empty?
-          ticket_row.push('-')
-        else
-          ticket_row.push(participants.sort_by {|_key, value| value}.last.first)
-        end
+        owner = ticket.owner
 
+        ticket_row.push(owner)
         ticket_row.push(participants.keys.join(', '))
-        ticket_row.push('Dev complete')
+        ticket_row.push(ticket.hours_logged[owner])
+        ticket_row.push(ticket.status)
+
+        ticket_row.push('') # Comments
 
         ticket_row.push(total_hours_jira.round(2) || 0)
         ticket_row.push(total_hours_timesheet.round(2) || 0)
+
+        # 3 black cells before we put individual hours
+        ticket_row.push('')
+        ticket_row.push('')
+        ticket_row.push('')
+
 
         ticket_row.push(*member_hours_jira)
         ticket_row.push(*member_hours_timesheet)
@@ -208,7 +223,8 @@ module Retrospectives
       end
 
       all_rows.push([])
-      all_rows.push(*get_moved_out_tickets)
+
+      #all_rows.push(*get_taiga_tickets)
 
       retro_sheet.update_cells(25, 1, all_rows)
       retro_sheet.save
@@ -216,46 +232,61 @@ module Retrospectives
       all_rows
     end
 
-    # Hardcoded logic (for rows)
+    # Hardcoded logic (for rows), should not be in the gem
     def generate_retro_sheet_summary
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
-      retro_sheet.update_cells(2, 4, [[@sprint_id, @start_date.to_s, @end_date.to_s]])
+      retro_sheet.update_cells(3, 4, [[@sprint_id, @start_date.to_s, @end_date.to_s]])
 
       @members.each_with_index do |member, index|
         row = [member.name, '-', member.hours_spent_timesheet.values.inject(:+), '-', '-']
-        retro_sheet.update_cells(7 + index, 4, [row])
+        retro_sheet.update_cells(8 + index, 4, [row])
       end
 
-      # populate_ticket_information_from_sprint_sheet
+      # get_ticket_information_from_sprint_sheet
 
       retro_sheet.save
     end
 
-    def populate_ticket_information_from_sprint_sheet
+    def get_ticket_information_from_sprint_sheet
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
+      sprint_sheet = get_sheet(@sprint_sheet_key, @sprint_sheet_index)
 
-    end
+      sprint_sheet_data = {}
 
-    def get_moved_out_tickets
-      issues = @jira_client.Issue.jql("Sprint in (#{sprint_id})")
-      tickets_from_timesheet = Array.new
-      moved_out_tickets = Array.new
+      (3..23).to_a.each do |row|
+        ticket = sprint_sheet[row, 1]
+        status = sprint_sheet[row, 3]
+        owner  = sprint_sheet[row, 4]
+        sp     = sprint_sheet[row, 6]
 
-      @tickets.each do |ticket|
-        tickets_from_timesheet.push(ticket.id)
+        status = if status.downcase.include?('carry fwd')
+          'Carry fwd'
+        elsif status.downcase.include?('moved out')
+          'Moved out'
+        else
+          'Dev complete'
+        end
+
+        sprint_sheet_data[ticket] = {'status' => status, 'owner' => owner, 'sp' => sp}
       end
 
-      issues.each do |issue|
-        issue_id = issue.attrs['key']
-        next if tickets_from_timesheet.include?(issue_id)
+      Retrospectives::logger.debug("Tickets got from sprint sheet : #{sprint_sheet_data.keys.inspect}")
 
-        description = issue.attrs['fields']['summary']
-        type = issue.attrs['fields']['issuetype']['name']
+      (26..150).to_a.each do |row|
+        next if retro_sheet[row, 1].to_s == ''
 
-        moved_out_tickets.push([issue_id, description, type, 0, ' ', ' ', 'Moved out'])
+        ticket_from_retro = retro_sheet[row, 1]
+
+        next if sprint_sheet_data[ticket_from_retro].nil?
+
+        Retrospectives::logger.debug("Adding SPs, owner, status for #{ticket_from_retro}")
+        retro_sheet[row, 4] = sprint_sheet_data[ticket_from_retro]['sp']
+        retro_sheet[row, 5] = sprint_sheet_data[ticket_from_retro]['owner']
+        retro_sheet[row, 8] = sprint_sheet_data[ticket_from_retro]['status']
       end
 
-      moved_out_tickets
+      retro_sheet.save
+
     end
 
     def get_timesheet_hours_for(member, ticket_id)
@@ -264,6 +295,20 @@ module Retrospectives
 
     def get_sheet(sheet_key, index)
       @google_client.spreadsheet_by_key(sheet_key).worksheets[index]
+    end
+
+    def get_sheets(sheet_key)
+      @google_client.spreadsheet_by_key(sheet_key).worksheets
+    end
+
+    def get_tickets(sheet)
+      (2..100).each do |row|
+        next unless sheet[row, 1].include?('-')
+
+        @tickets.add(Ticket.new(sheet[row, 1]))
+      end
+
+      @tickets
     end
   end
 end

@@ -41,7 +41,7 @@ module Retrospectives
         begin
           issue = retro.jira_client.Issue.find(ticket.id)
         rescue
-          Retrospectives::logger.info("WARNING : timeout [#{ticket.id}]. Retry [#{retry_attempts / 3}]")
+          Retrospectives::logger.info("WARNING : timeout [#{ticket.id}]. Retry [#{retry_attempts} / 3]")
           retry_attempts += 1
           if retry_attempts < 3
             retry
@@ -87,7 +87,11 @@ module Retrospectives
         worklog_date = Date.parse(worklog['started'])
         worklog_id = worklog['self'].split('/').last
 
-        next("Ignoring #{ticket} #{worklog_id}") if(worklog_date > retro.end_date || worklog_date < retro.start_date)
+        # this substracts one day not one second, as retro.end_date is a date class object
+        sprint_end_date = retro.end_date - 1
+
+        next("Ignoring #{ticket} #{worklog_id}") if(worklog_date > sprint_end_date ||
+                                                    worklog_date < retro.start_date)
 
         author = worklog['author']['name']
         time_in_hours = (worklog['timeSpentSeconds'] / 3600.0).round(2)

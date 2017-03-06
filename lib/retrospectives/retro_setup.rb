@@ -43,7 +43,7 @@ module Retrospectives
       @sprint_sheet_obj = SprintSheet.new(self, sheet_key, sheet_title)
     end
 
-    def add_tickets=(tickets_array)
+    def add_tickets(tickets_array)
       return if tickets_array.nil?
 
       @tickets = Set.new
@@ -93,12 +93,10 @@ module Retrospectives
 
       Retrospectives::logger.info('Validated Prerequisites')
 
-      unless sprint_sheet_obj.nil?
-        sprint_sheet_obj.parse_data
+      unless @sprint_sheet_obj.nil?
+        @sprint_sheet_obj.parse_data
         Retrospectives::logger.info('Fetched tickets from sprint sheet')
-        return
       end
-
 
       FetchHours.from_timesheet(self)
       Retrospectives::logger.info('Fetched data from timesheet')
@@ -111,7 +109,6 @@ module Retrospectives
 
       Retrospectives::logger.info('Generated retrospective sheet, CTRL + Click to view')
       Retrospectives::logger.info(get_sheet(@retrospective_sheet_key, 0).human_url)
-      rows
     end
 
     def validate_members_array(members_arr)
@@ -196,8 +193,6 @@ module Retrospectives
           participants[member.name] = timesheet_hours_for_member unless timesheet_hours_for_member.to_f.zero?
         end
 
-        Retrospectives::logger.debug("Doing for #{ticket.id}, participants : #{participants.inspect}")
-
         owner = ticket.owner
 
         ticket_row.push(owner)
@@ -215,78 +210,28 @@ module Retrospectives
         ticket_row.push('')
         ticket_row.push('')
 
-
         ticket_row.push(*member_hours_jira)
         ticket_row.push(*member_hours_timesheet)
 
         all_rows.push(ticket_row)
       end
 
-      all_rows.push([])
-
-      #all_rows.push(*get_taiga_tickets)
-
-      retro_sheet.update_cells(25, 1, all_rows)
+      retro_sheet.update_cells(26, 1, all_rows)
       retro_sheet.save
-
-      all_rows
     end
 
     # Hardcoded logic (for rows), should not be in the gem
     def generate_retro_sheet_summary
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
-      retro_sheet.update_cells(3, 4, [[@sprint_id, @start_date.to_s, @end_date.to_s]])
+      retro_sheet.update_cells(3, 4, [[@sprint_id, @start_date.to_s, (@end_date - 1).to_s]])
 
       @members.each_with_index do |member, index|
-        row = [member.name, '-', member.hours_spent_timesheet.values.inject(:+), '-', '-']
+        row = [member.name, '-', '-', member.hours_spent_timesheet.values.inject(:+), '-',
+               member.expected_sps]
         retro_sheet.update_cells(8 + index, 4, [row])
       end
 
-      # get_ticket_information_from_sprint_sheet
-
       retro_sheet.save
-    end
-
-    def get_ticket_information_from_sprint_sheet
-      retro_sheet = get_sheet(@retrospective_sheet_key, 0)
-      sprint_sheet = get_sheet(@sprint_sheet_key, @sprint_sheet_index)
-
-      sprint_sheet_data = {}
-
-      (3..23).to_a.each do |row|
-        ticket = sprint_sheet[row, 1]
-        status = sprint_sheet[row, 3]
-        owner  = sprint_sheet[row, 4]
-        sp     = sprint_sheet[row, 6]
-
-        status = if status.downcase.include?('carry fwd')
-          'Carry fwd'
-        elsif status.downcase.include?('moved out')
-          'Moved out'
-        else
-          'Dev complete'
-        end
-
-        sprint_sheet_data[ticket] = {'status' => status, 'owner' => owner, 'sp' => sp}
-      end
-
-      Retrospectives::logger.debug("Tickets got from sprint sheet : #{sprint_sheet_data.keys.inspect}")
-
-      (26..150).to_a.each do |row|
-        next if retro_sheet[row, 1].to_s == ''
-
-        ticket_from_retro = retro_sheet[row, 1]
-
-        next if sprint_sheet_data[ticket_from_retro].nil?
-
-        Retrospectives::logger.debug("Adding SPs, owner, status for #{ticket_from_retro}")
-        retro_sheet[row, 4] = sprint_sheet_data[ticket_from_retro]['sp']
-        retro_sheet[row, 5] = sprint_sheet_data[ticket_from_retro]['owner']
-        retro_sheet[row, 8] = sprint_sheet_data[ticket_from_retro]['status']
-      end
-
-      retro_sheet.save
-
     end
 
     def get_timesheet_hours_for(member, ticket_id)

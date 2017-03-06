@@ -30,7 +30,7 @@ module Retrospectives
         skip = false
 
         retro.ignore_issues_starting_with.each do |issue_key|
-          if ticket.id.start_with? issue_key
+          if ticket.id.start_with?(issue_key)
             skip = true
             break
           end
@@ -38,23 +38,25 @@ module Retrospectives
 
         next("Skipping for JIRA calls #{ticket.id}") if skip == true
 
-        begin
-          issue = retro.jira_client.Issue.find(ticket.id)
-        rescue
-          Retrospectives::logger.info("WARNING : timeout [#{ticket.id}]. Retry [#{retry_attempts} / 3]")
-          retry_attempts += 1
-          if retry_attempts < 3
-            retry
+        if retro.sprint_sheet_obj.nil?
+          begin
+            issue = retro.jira_client.Issue.find(ticket.id)
+          rescue
+            Retrospectives::logger.info("WARNING : timeout [#{ticket.id}]. Retry [#{retry_attempts} / 3]")
+            retry_attempts += 1
+            if retry_attempts < 3
+              retry
+            end
+            if issue.nil?
+              Retrospectives::logger.info("WARNING : Issue details not found [#{ticket.inspect}]. Skipping...")
+              next
+            end
           end
-          if issue.nil?
-            Retrospectives::logger.info("WARNING : Issue details not found [#{ticket.inspect}]. Skipping...")
-            next
-          end
+          ticket.description = issue.attrs['fields']['summary']
+          ticket.type = issue.attrs['fields']['issuetype']['name']
+          ticket.story_points = issue.attrs['fields']['customfield_10004']
+          ticket.status = issue.attrs['fields']['status']['name']
         end
-        ticket.description = issue.attrs['fields']['summary']
-        ticket.type = issue.attrs['fields']['issuetype']['name']
-        ticket.story_points = issue.attrs['fields']['customfield_10004']
-        ticket.status = issue.attrs['fields']['status']['name']
         fetch_and_store_jira_hours(ticket, retro)
       end
     end
@@ -82,6 +84,7 @@ module Retrospectives
 
     def self.fetch_and_store_jira_hours(ticket, retro)
       worklogs = retro.simple_jira_wrapper.get_worklog(ticket.id)
+      return if worklogs.nil? || worklogs['worklogs'].nil?
 
       worklogs['worklogs'].each do |worklog|
         worklog_date = Date.parse(worklog['started'])

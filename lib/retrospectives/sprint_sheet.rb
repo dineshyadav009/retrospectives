@@ -17,14 +17,14 @@ module Retrospectives
       @sheet_title = title
 
       # Don't alter the order of fields. If you need to, update the constants ending with '_INDEX'
-      @fields = ['Key', 'Summary', 'Type', 'Status', 'Ticket owner', 'Reviewer',  'Assigned SPs']
+      @fields = ['Key', 'Summary', 'Type', 'Status', 'Ticket Owner', 'Reviewer',  'Assigned SPs']
 
       parse_sheet_info
       parse_indices
     end
 
     def parse_data
-      tickets = Array.new
+      tickets = Set.new
 
       (2..@sheet_obj.max_rows).each do |row|
         key = @sheet_obj[row, @indices[@fields[KEY_INDEX]]]
@@ -45,7 +45,7 @@ module Retrospectives
         ticket.type = type
         ticket.reviewer = reviewer
 
-        tickets.push(ticket)
+        tickets.add(ticket)
       end
       @retro_obj.tickets = tickets
     end

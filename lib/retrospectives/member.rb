@@ -1,14 +1,21 @@
 module Retrospectives
   class Member
-    attr_reader :name, :sheet_key, :sheet_index, :hours_spent_timesheet, :hours_spent_jira
+    attr_reader :name, :sheet_key, :sheet_index, :hours_spent_timesheet, :hours_spent_jira,
+                :bandwidth, :days_worked
 
     def initialize(member_hash)
       @name = member_hash[:name]
       @sheet_key = member_hash[:sheet_key]
       @sheet_index = member_hash[:sheet_index] || 0
+      @bandwidth = member_hash[:bandwidth] || 0
+      @days_worked = member_hash[:days_worked] || 0
 
       @hours_spent_timesheet = Hash.new(0)
       @hours_spent_jira = Hash.new(0)
+    end
+
+    def expected_sps
+      (@bandwidth.to_f * @days_worked.to_f * 2).round(2)
     end
   end
 end

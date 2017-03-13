@@ -57,6 +57,7 @@ module Retrospectives
           ticket.story_points = issue.attrs['fields']['customfield_10004']
           ticket.status = issue.attrs['fields']['status']['name']
         end
+
         fetch_and_store_jira_hours(ticket, retro)
       end
     end
@@ -100,7 +101,7 @@ module Retrospectives
         time_in_hours = (worklog['timeSpentSeconds'] / 3600.0).round(2)
 
         retro.members.each do |member|
-          member.hours_spent_jira[ticket.id] += time_in_hours if member.name == author
+          member.hours_spent_jira[ticket.id] += time_in_hours if member.username == author
           ticket.hours_logged['total'] += time_in_hours
         end
       end

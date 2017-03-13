@@ -2,7 +2,8 @@ module Retrospectives
   class RetroSetup
 
     attr_reader :hours_logged, :members, :start_date, :end_date, :google_client,
-                :jira_client, :simple_jira_wrapper
+                :jira_client, :simple_jira_wrapper, :carry_fwd_sps_in_this_sprint,
+                :done_sps_in_this_sprint
 
     attr_accessor :tickets, :sprint_delimiter_index, :hours_spent_index, :retrospective_sheet_key,
                   :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with,
@@ -13,6 +14,7 @@ module Retrospectives
       @sprint_delimiter_index = 3
       @hours_spent_index = 4
       @include_other_tickets = false
+      @carry_fwd_sps_in_this_sprint = @done_sps_in_this_sprint = 0
 
       @members = Set.new
       @tickets = Set.new
@@ -156,19 +158,7 @@ module Retrospectives
 
     def generate_retro_sheet_tickets
       all_rows = Array.new
-
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
-      # headers = ['Ticket id', 'Description', 'Story type', 'Story points', 'Owner',
-      #            'Participants', 'Owner hours', 'Status', 'Comments']
-
-      # headers.push('Total hrs (JIRA)')
-      # headers.push('Total hrs (Timesheet)')
-
-      # #@members.each { |member| headers.push("Hrs (J) [#{member.name.split('.').first}]") }
-
-      # @members.each { |member| headers.push("Hrs (T) [#{member.name.split('.').first}]") }
-
-      # all_rows.push(headers)
 
       @tickets.to_a.each do |ticket|
         ticket_row = []
@@ -178,7 +168,11 @@ module Retrospectives
         member_hours_timesheet = []
         participants = Hash.new(0)
 
-        ticket_row.push(ticket.id, ticket.description, ticket.type, ticket.story_points)
+        sps_consumed, sps_carry_fwd = parse_story_points(ticket.story_points.to_s)
+        @carry_fwd_sps_in_this_sprint += sps_carry_fwd
+        @done_sps_in_this_sprint += sps_consumed
+
+        ticket_row.push(ticket.id, ticket.description, ticket.type, sps_consumed)
 
         @members.each do |member|
           member_hours_jira.push(member.hours_spent_jira[ticket.id].round(2) || 0)
@@ -197,7 +191,7 @@ module Retrospectives
 
         ticket_row.push(owner)
         ticket_row.push(participants.keys.join(', '))
-        ticket_row.push(ticket.hours_logged[owner])
+        ticket_row.push(get_owner_hours(ticket, owner))
         ticket_row.push(ticket.status)
 
         ticket_row.push('') # Comments
@@ -216,11 +210,13 @@ module Retrospectives
         all_rows.push(ticket_row)
       end
 
-      retro_sheet.update_cells(26, 1, all_rows)
+      retro_sheet.update_cells(27, 1, all_rows)
       retro_sheet.save
     end
 
-    # Hardcoded logic (for rows), should not be in the gem
+    # Hardcoded logic
+    #
+    # TODO: take row/column values externally or take this code out of gem
     def generate_retro_sheet_summary
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
       retro_sheet.update_cells(3, 4, [[@sprint_id, @start_date.to_s, (@end_date - 1).to_s]])
@@ -230,6 +226,15 @@ module Retrospectives
                member.expected_sps]
         retro_sheet.update_cells(8 + index, 4, [row])
       end
+
+      # JIRA Delivered SPs
+      retro_sheet[8, 12] = @done_sps_in_this_sprint
+
+      # JIRA In progress SPs
+      retro_sheet[9, 12] = @carry_fwd_sps_in_this_sprint
+
+      # JIRA In progress hours. In UCM, SPs * 4 = estimated hours.
+      retro_sheet[10, 12] = (@carry_fwd_sps_in_this_sprint * 4)
 
       retro_sheet.save
     end
@@ -254,6 +259,26 @@ module Retrospectives
       end
 
       @tickets
+    end
+
+    def get_owner_hours(ticket, owner)
+      @members.to_a.each do |member|
+        return member.hours_spent_timesheet[ticket.id] if member.name == owner
+       end
+
+      0
+    end
+
+    def parse_story_points(story_points)
+      if story_points.include?('(') && story_points.include?(')')
+        sps_total = story_points.split('(')[0].to_i
+        sps_consumed = story_points.split('(')[1].to_i
+        sps_carry_fwd = sps_total - sps_consumed
+
+        return sps_consumed, sps_carry_fwd
+      end
+
+      return story_points.to_i , 0
     end
   end
 end

@@ -4,8 +4,10 @@ module Retrospectives
     attr_accessor :debug
 
     JIRA_ISSUE_API = '/rest/api/2/issue/'
+    JIRA_BACKLOG_API = '/rest/agile/1.0/board/BOARD_ID/backlog?maxResults='
     WORKLOG_PATH = '/worklog'
     HEADERS = {'content-type' => 'application/json'}
+    DEFAULT_BACKLOG_MAX_RESULT = 20
 
     def initialize(options)
       @username = options[:username]
@@ -63,6 +65,20 @@ module Retrospectives
       rescue StandardError => e
         Retrospectives::logger.info("Exception #{e.message} for #{ticket_id}")
       end
+    end
+
+    def get_tickets_from_backlog(board_id, max_results = DEFAULT_BACKLOG_MAX_RESULT)
+      backlog_api = JIRA_BACKLOG_API.sub('BOARD_ID', board_id.to_s)
+      url = @domain + backlog_api + max_results.to_s
+
+      begin
+        resp = Typhoeus::Request.get(url, headers: HEADERS, userpwd: @auth)
+        Retrospectives::logger.debug("Response code for Backlog API : #{resp.code}")
+        JSON.parse(resp.body)['issues']
+      rescue StandardError => e
+        Retrospectives::logger.info("Exception #{e.message} for #{ticket_id}")
+      end
+
     end
   end
 end

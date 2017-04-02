@@ -7,7 +7,7 @@ module Retrospectives
 
     attr_accessor :tickets, :sprint_delimiter_index, :hours_spent_index, :retrospective_sheet_key,
                   :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with,
-                  :sprint_id, :sprint_sheet_obj
+                  :sprint_id, :sprint_sheet_obj, :get_total_sps
 
     def initialize
       @ticket_id_index = 1
@@ -15,6 +15,7 @@ module Retrospectives
       @hours_spent_index = 4
       @include_other_tickets = false
       @carry_fwd_sps_in_this_sprint = @done_sps_in_this_sprint = 0
+      @get_total_sps = false
 
       @members = Set.new
       @tickets = Set.new
@@ -172,7 +173,8 @@ module Retrospectives
         @carry_fwd_sps_in_this_sprint += sps_carry_fwd
         @done_sps_in_this_sprint += sps_consumed
 
-        ticket_row.push(ticket.id, ticket.description, ticket.type, sps_consumed)
+        ticket_row.push(ticket.id, ticket.description, ticket.type)
+        ticket_row.push("#{sps_consumed} (#{ticket.total_story_points})")
 
         @members.each do |member|
           member_hours_jira.push(member.hours_spent_jira[ticket.id].round(2) || 0)
@@ -196,7 +198,7 @@ module Retrospectives
 
         ticket_row.push('') # Comments
 
-        ticket_row.push(total_hours_jira.round(2) || 0)
+        ticket_row.push("#{total_hours_jira.round(2)} (#{ticket.hours_logged['total'].round(2)})")
         ticket_row.push(total_hours_timesheet.round(2) || 0)
 
         # 3 black cells before we put individual hours

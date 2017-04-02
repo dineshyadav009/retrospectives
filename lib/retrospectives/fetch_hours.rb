@@ -38,7 +38,7 @@ module Retrospectives
 
         next("Skipping for JIRA calls #{ticket.id}") if skip == true
 
-        if retro.sprint_sheet_obj.nil?
+        if retro.sprint_sheet_obj.nil?  || retro.get_total_sps == true
           begin
             issue = retro.jira_client.Issue.find(ticket.id)
           rescue
@@ -52,10 +52,14 @@ module Retrospectives
               next
             end
           end
-          ticket.description = issue.attrs['fields']['summary']
-          ticket.type = issue.attrs['fields']['issuetype']['name']
-          ticket.story_points = issue.attrs['fields']['customfield_10004']
-          ticket.status = issue.attrs['fields']['status']['name']
+
+          if retro.get_total_sps == false
+            ticket.description = issue.attrs['fields']['summary']
+            ticket.type = issue.attrs['fields']['issuetype']['name']
+            ticket.status = issue.attrs['fields']['status']['name']
+          end
+
+          ticket.total_story_points = issue.attrs['fields']['customfield_10004']
         end
 
         fetch_and_store_jira_hours(ticket, retro)
@@ -94,15 +98,14 @@ module Retrospectives
         # this substracts one day not one second, as retro.end_date is a date class object
         sprint_end_date = retro.end_date - 1
 
-        next("Ignoring #{ticket} #{worklog_id}") if(worklog_date > sprint_end_date ||
-                                                    worklog_date < retro.start_date)
-
         author = worklog['author']['name']
         time_in_hours = (worklog['timeSpentSeconds'] / 3600.0).round(2)
+        ticket.hours_logged['total'] += time_in_hours
+
+        next if(worklog_date > sprint_end_date || worklog_date < retro.start_date)
 
         retro.members.each do |member|
-          member.hours_spent_jira[ticket.id] += time_in_hours if member.username == author
-          ticket.hours_logged['total'] += time_in_hours
+            member.hours_spent_jira[ticket.id] += time_in_hours if member.username == author
         end
       end
     end

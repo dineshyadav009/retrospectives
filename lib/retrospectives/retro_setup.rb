@@ -5,14 +5,13 @@ module Retrospectives
                 :jira_client, :simple_jira_wrapper, :carry_fwd_sps_in_this_sprint,
                 :done_sps_in_this_sprint
 
-    attr_accessor :tickets, :sprint_delimiter_index, :hours_spent_index, :retrospective_sheet_key,
+    attr_accessor :tickets, :sprint_delimiter_index, :retrospective_sheet_key,
                   :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with,
                   :sprint_id, :sprint_sheet_obj, :get_total_sps
 
     def initialize
       @ticket_id_index = 1
       @sprint_delimiter_index = 3
-      @hours_spent_index = 4
       @include_other_tickets = false
       @carry_fwd_sps_in_this_sprint = @done_sps_in_this_sprint = 0
       @get_total_sps = false

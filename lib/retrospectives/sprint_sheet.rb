@@ -1,39 +1,39 @@
 module Retrospectives
   class SprintSheet
     # required fields from sprint sheet and their indices
-    attr_accessor :indices, :sheet_key, :sheet_title, :retro_obj, :sheet_obj, :fields
+    attr_accessor :indices, :sheet_key, :sheet_title, :retro_obj, :sheet_obj, :fields, :key_index,
+                  :summary_index, :type_index, :status_index, :ticket_owner_index,
+                  :ticket_reviewer_index, :story_points_index
 
-    KEY_INDEX = 0
-    SUMMARY_INDEX = 1
-    TYPE_INDEX = 2
-    STATUS_INDEX = 3
-    TICKET_OWNER_INDEX = 4
-    TICKET_REVIEWER_INDEX = 5
-    SPS_INDEX = 6
 
     def initialize(retro, key, title)
       @retro_obj = retro
       @sheet_key = key
       @sheet_title = title
 
-      # Don't alter the order of fields. If you need to, update the constants ending with '_INDEX'
-      @fields = ['Key', 'Summary', 'Type', 'Status', 'Ticket Owner', 'Reviewer',  'Assigned SPs']
+      # fields are indexed from '1' in a google worksheet
+      @key_index = 1
+      @summary_index = 2
+      @type_index = 3
+      @status_index = 4
+      @ticket_owner_index = 5
+      @ticket_reviewer_index = 6
+      @story_points_index = 7
 
       parse_sheet_info
-      parse_indices
     end
 
     def parse_data
       tickets = Set.new
 
       (2..@sheet_obj.max_rows).each do |row|
-        key = @sheet_obj[row, @indices[@fields[KEY_INDEX]]]
-        summary = @sheet_obj[row, @indices[@fields[SUMMARY_INDEX]]]
-        type = @sheet_obj[row, @indices[@fields[TYPE_INDEX]]]
-        status = @sheet_obj[row, @indices[@fields[STATUS_INDEX]]]
-        sp = @sheet_obj[row, @indices[@fields[SPS_INDEX]]]
-        owner = @sheet_obj[row, @indices[@fields[TICKET_OWNER_INDEX]]]
-        reviewer = @sheet_obj[row, @indices[@fields[TICKET_REVIEWER_INDEX]]]
+        key = @sheet_obj[row, key_index]
+        summary = @sheet_obj[row, summary_index]
+        type = @sheet_obj[row, type_index]
+        status = @sheet_obj[row, status_index]
+        sp = @sheet_obj[row, story_points_index]
+        owner = @sheet_obj[row, ticket_owner_index]
+        reviewer = @sheet_obj[row, ticket_reviewer_index]
 
         next if key.empty?
 
@@ -59,30 +59,6 @@ module Retrospectives
       end
 
       raise "Invalid title. No sheet found with name '#{@sheet_title}'" if @sheet_obj.nil?
-    end
-
-    def parse_indices
-      raise "Sheet not initialized properly" if @sheet_obj.nil?
-
-      @indices = Hash.new(0)
-      max_cols = @sheet_obj.max_cols
-
-      (1..max_cols).each do |col|
-        cell_data = @sheet_obj[1, col]
-
-        next if cell_data.empty?
-
-        @fields.each_with_index do |f, index|
-          if cell_data.gsub("\n", ' ').downcase.include?(f.downcase)
-            @indices[cell_data] = index + 1
-            break
-          end
-        end
-      end
-
-      unless @fields.length == @indices.keys.length
-        raise "Indices not populated, check field names in sheet \n #{@fields.inspect}"
-      end
     end
   end
 end

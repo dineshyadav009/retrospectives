@@ -5,20 +5,29 @@ module Retrospectives
         sheet = retro.google_client.spreadsheet_by_key(member.sheet_key).
         worksheets[member.sheet_index]
 
-        start_row = get_row(sheet, retro, retro.start_date.to_s.gsub('-',''))
-        end_row = get_row(sheet, retro, retro.end_date.to_s.gsub('-',''))
+        start_date_column, end_date_column = get_start_and_end_date_columns(sheet, retro)
 
-        raise "Sprint not marked correctly for #{member.name}"  if start_row.nil? || end_row.nil?
+        if start_date_column.nil? || end_date_column.nil?
+          Retrospectives::logger.debug("start, end col vals : #{start_date_column}, #{end_date_column}")
+          raise "Incorrect dates marked or timesheet not completed for #{member.name}"
+        end
 
-        (start_row..end_row).to_a.each do |row_index|
-          ticket_id = Utils.clean(sheet[row_index, retro.ticket_id_index])
-          hours_spent = Utils.clean(sheet[row_index, retro.hours_spent_index]).to_f.round(2)
+        (start_date_column..end_date_column).each do |column|
+          (1..sheet.max_rows).each do |row|
+            value = sheet[row, column]
+            input_value = sheet.input_value(row, column)
 
-          next if ticket_id.nil? || ticket_id.empty?
+            next if input_value.include?('=SUM') || input_value.blank?
 
-          if retro.include_other_tickets || retro_tickets_include?(retro, ticket_id)
-            member.hours_spent_timesheet[ticket_id] += hours_spent
-            retro.add_ticket(ticket_id) if retro.include_other_tickets
+            ticket_id = Utils.clean(sheet[row, retro.ticket_id_index])
+            hours_spent = Utils.clean(input_value).to_f.round(2)
+
+            next if ticket_id.nil? || ticket_id.empty?
+
+            if retro.include_other_tickets || retro_tickets_include?(retro, ticket_id)
+              member.hours_spent_timesheet[ticket_id] += hours_spent
+              retro.add_ticket(ticket_id) if retro.include_other_tickets
+            end
           end
         end
       end
@@ -69,14 +78,22 @@ module Retrospectives
 
     private
 
-    def self.get_row(sheet, retro, text)
-      (1..sheet.num_rows).each do |row_index|
-        next unless sheet[row_index, retro.sprint_delimiter_index].include?(text)
+    def self.get_start_and_end_date_columns(sheet, retro)
+      start_date_column = nil
+      end_date_column = nil
 
-        return row_index
+      (1..sheet.max_cols).each do |column|
+        begin
+         date = Date.strptime(sheet[1, column],'%d/%m/%Y')
+
+         start_date_column = column if date == retro.start_date
+         end_date_column = column if date == retro.end_date
+        rescue
+          # Not important to catch
+        end
       end
 
-      nil
+      [start_date_column, end_date_column]
     end
 
     def self.retro_tickets_include?(retro, ticket_id)
@@ -105,7 +122,7 @@ module Retrospectives
         next if(worklog_date > sprint_end_date || worklog_date < retro.start_date)
 
         retro.members.each do |member|
-            member.hours_spent_jira[ticket.id] += time_in_hours if member.username == author
+          member.hours_spent_jira[ticket.id] += time_in_hours if member.username == author
         end
       end
     end

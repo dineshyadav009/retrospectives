@@ -35,7 +35,7 @@ module Retrospectives
         owner = @sheet_obj[row, ticket_owner_index]
         reviewer = @sheet_obj[row, ticket_reviewer_index]
 
-        next if key.empty?
+        next if key.empty? || key == 'X(Y) for SPs' || key == 'Story ID'
 
         ticket = Ticket.new(key)
         ticket.description = summary
@@ -44,6 +44,8 @@ module Retrospectives
         ticket.owner = owner
         ticket.type = type
         ticket.reviewer = reviewer
+
+        Retrospectives::logger.debug(" - Adding ticket from sprint sheet #{key}")
 
         tickets.add(ticket)
       end

@@ -2,6 +2,7 @@ module Retrospectives
   class FetchHours
     def self.from_timesheet(retro)
       retro.members.each do |member|
+        Retrospectives::logger.debug("Running for member #{member.name}")
         sheet = retro.google_client.spreadsheet_by_key(member.sheet_key).
         worksheets[member.sheet_index]
 
@@ -9,7 +10,7 @@ module Retrospectives
 
         if start_date_column.nil? || end_date_column.nil?
           Retrospectives::logger.debug("start, end col vals : #{start_date_column}, #{end_date_column}")
-          raise "Incorrect dates marked or timesheet not completed for #{member.name}"
+          raise "#{member.name} did not fill timesheet."
         end
 
         (start_date_column..end_date_column).each do |column|
@@ -23,6 +24,8 @@ module Retrospectives
             hours_spent = Utils.clean(input_value).to_f.round(2)
 
             next if ticket_id.nil? || ticket_id.empty?
+
+            Retrospectives::logger.debug("  - Ticket id : "+ticket_id.to_s+ " hours spent : "+hours_spent.to_s)
 
             if retro.include_other_tickets || retro_tickets_include?(retro, ticket_id)
               member.hours_spent_timesheet[ticket_id] += hours_spent
@@ -88,6 +91,8 @@ module Retrospectives
 
          start_date_column = column if date == retro.start_date
          end_date_column = column if date == retro.end_date
+
+         break if (!start_date_column.nil? && !end_date_column.nil?)
         rescue
           # Not important to catch
         end
@@ -112,14 +117,11 @@ module Retrospectives
         worklog_date = Date.parse(worklog['started'])
         worklog_id = worklog['self'].split('/').last
 
-        # this substracts one day not one second, as retro.end_date is a date class object
-        sprint_end_date = retro.end_date - 1
-
         author = worklog['author']['name']
         time_in_hours = (worklog['timeSpentSeconds'] / 3600.0).round(2)
         ticket.hours_logged['total'] += time_in_hours
 
-        next if(worklog_date > sprint_end_date || worklog_date < retro.start_date)
+        next if(worklog_date > retro.end_date || worklog_date < retro.start_date)
 
         retro.members.each do |member|
           member.hours_spent_jira[ticket.id] += time_in_hours if member.username == author

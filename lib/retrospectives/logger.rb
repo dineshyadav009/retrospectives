@@ -15,6 +15,8 @@ module Retrospectives
     end
 
     def debug(str)
+      return if Retrospectives::RetroSetup.debug == false
+
       begin
         str.split("\n").each do |line|
           @logger.debug(line)

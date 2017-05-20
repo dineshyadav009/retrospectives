@@ -9,6 +9,16 @@ module Retrospectives
                   :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with,
                   :sprint_id, :sprint_sheet_obj, :get_total_sps
 
+    @@debug = false
+
+    def self.debug
+      @@debug
+    end
+
+    def self.debug=(new_debug)
+      @@debug = new_debug
+    end
+
     def initialize
       @ticket_id_index = 1
       @sprint_delimiter_index = 3

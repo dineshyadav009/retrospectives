@@ -39,20 +39,27 @@ module Retrospectives
     def self.from_jira(retro)
       retro.tickets.each do |ticket|
         retry_attempts = 0
-        skip = false
+        skip_processing_for_ticket = false
 
-        retro.ignore_issues_starting_with.each do |issue_key|
+        retro.ignore_issues_for_jira_calls.each do |issue_key|
           if ticket.id.start_with?(issue_key)
-            skip = true
+            skip_processing_for_ticket = true
             break
           end
         end
 
-        next("Skipping for JIRA calls #{ticket.id}") if skip == true
+        if skip_processing_for_ticket == true
+          Retrospectives::logger.info("Skipping for JIRA calls #{ticket.id}")
+          next
+        end
 
         if retro.sprint_sheet_obj.nil?  || retro.get_total_sps == true
           begin
             issue = retro.jira_client.Issue.find(ticket.id)
+            ticket.description = issue.attrs['fields']['summary']
+            ticket.type = issue.attrs['fields']['issuetype']['name']
+            ticket.status = issue.attrs['fields']['status']['name']
+            Retrospectives::logger.info("Fetched issue details for #{ticket.id}")
           rescue
             Retrospectives::logger.info("WARNING : timeout [#{ticket.id}]. Retry [#{retry_attempts} / 3]")
             retry_attempts += 1
@@ -65,16 +72,10 @@ module Retrospectives
             end
           end
 
-          if retro.get_total_sps == false
-            ticket.description = issue.attrs['fields']['summary']
-            ticket.type = issue.attrs['fields']['issuetype']['name']
-            ticket.status = issue.attrs['fields']['status']['name']
-          end
-
           ticket.total_story_points = issue.attrs['fields']['customfield_10004']
         end
 
-        fetch_and_store_jira_hours(ticket, retro)
+        fetch_and_store_jira_hours(ticket, retro) if retro.get_jira_hours == true
       end
     end
 

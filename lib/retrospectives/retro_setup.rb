@@ -2,12 +2,13 @@ module Retrospectives
   class RetroSetup
 
     attr_reader :hours_logged, :members, :start_date, :end_date, :google_client,
-                :jira_client, :simple_jira_wrapper, :carry_fwd_sps_in_this_sprint,
-                :done_sps_in_this_sprint
+    :jira_client, :simple_jira_wrapper, :carry_fwd_sps_in_this_sprint,
+    :done_sps_in_this_sprint
 
     attr_accessor :tickets, :sprint_delimiter_index, :retrospective_sheet_key,
-                  :ticket_id_index, :include_other_tickets, :ignore_issues_starting_with,
-                  :sprint_id, :sprint_sheet_obj, :get_total_sps
+    :ticket_id_index, :include_other_tickets, :ignore_issues_for_jira_calls,
+    :sprint_id, :sprint_sheet_obj, :get_total_sps, :get_jira_hours,
+    :start_row_for_tickets
 
     @@debug = false
 
@@ -25,11 +26,12 @@ module Retrospectives
       @include_other_tickets = false
       @carry_fwd_sps_in_this_sprint = @done_sps_in_this_sprint = 0
       @get_total_sps = false
+      @get_jira_hours = false
 
       @members = Set.new
       @tickets = Set.new
 
-      @ignore_issues_starting_with = Array.new
+      @ignore_issues_for_jira_calls = Array.new
     end
 
     def authenticate_google_drive(config_path)
@@ -46,9 +48,9 @@ module Retrospectives
     end
 
     # Ignored only for JIRA calls
-    def ignore_issues_starting_with=(param)
-      @ignore_issues_starting_with = param.split(',') if param.is_a?(String)
-      @ignore_issues_starting_with = param if param.is_a?(Array)
+    def ignore_issues_for_jira_calls=(param)
+      @ignore_issues_for_jira_calls = param.split(',') if param.is_a?(String)
+      @ignore_issues_for_jira_calls = param if param.is_a?(Array)
     end
 
     def get_tickets_from_sprint_sheet(sheet_key, sheet_title)
@@ -171,12 +173,16 @@ module Retrospectives
       retro_sheet = get_sheet(@retrospective_sheet_key, 0)
 
       @tickets.to_a.each do |ticket|
+        next if ticket == 'Story ID'
+
         ticket_row = []
         total_hours_jira = 0.0
         total_hours_timesheet = 0.0
         member_hours_jira = []
         member_hours_timesheet = []
         participants = Hash.new(0)
+        probable_owner = nil
+        probable_owner_hours = 0
 
         sps_consumed, sps_carry_fwd = parse_story_points(ticket.story_points.to_s)
         @carry_fwd_sps_in_this_sprint += sps_carry_fwd
@@ -194,34 +200,49 @@ module Retrospectives
           timesheet_hours_for_member = get_timesheet_hours_for(member, ticket.id)
           member_hours_timesheet.push(timesheet_hours_for_member.round(2) || 0)
           total_hours_timesheet += timesheet_hours_for_member
-
           participants[member.name] = timesheet_hours_for_member unless timesheet_hours_for_member.to_f.zero?
+
+          if timesheet_hours_for_member > probable_owner_hours
+            probable_owner = member.name
+            probable_owner_hours = timesheet_hours_for_member
+          end
         end
 
-        owner = ticket.owner
+        if !ticket.owner.nil? && !ticket.owner.empty?
+          owner = ticket.owner
+          owner_hours = get_owner_hours(ticket, owner)
+        elsif participants.count == 0
+          owner = 'None'
+        elsif participants.count == 1
+          owner = participants.keys.first
+          owner_hours = probable_owner_hours
+        else
+          owner = probable_owner
+          owner_hours = probable_owner_hours
+        end
+
+        if participants.keys.join(', ').empty?
+          ticket_participants = owner
+        else
+          ticket_participants = participants.keys.join(', ')
+        end
 
         ticket_row.push(owner)
-        ticket_row.push(participants.keys.join(', '))
-        ticket_row.push(get_owner_hours(ticket, owner))
+        ticket_row.push(ticket_participants)
+        ticket_row.push(owner_hours)
         ticket_row.push(ticket.status)
 
-        ticket_row.push('') # Comments
+        ticket_row.push('', '') # Comments, Code climate
 
-        ticket_row.push("#{total_hours_jira.round(2)} (#{ticket.hours_logged['total'].round(2)})")
+        ticket_row.push("#{total_hours_jira.round(2)} (#{ticket.hours_logged['total'].round(2)})") if get_jira_hours == true
         ticket_row.push(total_hours_timesheet.round(2) || 0)
-
-        # 3 black cells before we put individual hours
-        ticket_row.push('')
-        ticket_row.push('')
-        ticket_row.push('')
-
-        ticket_row.push(*member_hours_jira)
+        ticket_row.push(*member_hours_jira) if get_jira_hours == true
         ticket_row.push(*member_hours_timesheet)
 
         all_rows.push(ticket_row)
       end
 
-      retro_sheet.update_cells(27, 1, all_rows)
+      retro_sheet.update_cells(start_row_for_tickets, 1, all_rows)
       retro_sheet.save
     end
 
@@ -233,19 +254,19 @@ module Retrospectives
       retro_sheet.update_cells(3, 4, [[@sprint_id, @start_date.to_s, (@end_date - 1).to_s]])
 
       @members.each_with_index do |member, index|
-        row = [member.name, '-', '-', member.hours_spent_timesheet.values.inject(:+), '-',
-               member.expected_sps]
-        retro_sheet.update_cells(8 + index, 4, [row])
-      end
+        row = [member.name, '-', '-', member.hours_spent_timesheet.values.inject(:+), '-', '-'
+         member.expected_sps]
+         retro_sheet.update_cells(8 + index, 4, [row])
+       end
 
       # JIRA Delivered SPs
-      retro_sheet[8, 12] = @done_sps_in_this_sprint
+      retro_sheet[8, 13] = @done_sps_in_this_sprint
 
       # JIRA In progress SPs
-      retro_sheet[9, 12] = @carry_fwd_sps_in_this_sprint
+      retro_sheet[9, 13] = @carry_fwd_sps_in_this_sprint
 
       # JIRA In progress hours. In UCM, SPs * 4 = estimated hours.
-      retro_sheet[10, 12] = (@carry_fwd_sps_in_this_sprint * 4)
+      retro_sheet[10, 13] = (@carry_fwd_sps_in_this_sprint * 4)
 
       retro_sheet.save
     end
@@ -275,21 +296,21 @@ module Retrospectives
     def get_owner_hours(ticket, owner)
       @members.to_a.each do |member|
         return member.hours_spent_timesheet[ticket.id] if member.name == owner
-       end
+      end
 
       0
     end
 
     def parse_story_points(story_points)
       if story_points.include?('(') && story_points.include?(')')
-        sps_total = story_points.split('(')[0].to_i
-        sps_consumed = story_points.split('(')[1].to_i
+        sps_total = story_points.split('(')[0].to_f.round(2)
+        sps_consumed = story_points.split('(')[1].to_f.round(2)
         sps_carry_fwd = sps_total - sps_consumed
 
         return sps_consumed, sps_carry_fwd
       end
 
-      return story_points.to_i , 0
+      return story_points.to_f.round(2) , 0
     end
   end
 end

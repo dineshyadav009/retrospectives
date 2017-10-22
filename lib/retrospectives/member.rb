@@ -3,6 +3,8 @@ module Retrospectives
     attr_reader :name, :username, :sheet_key, :sheet_index, :hours_spent_timesheet,
                 :hours_spent_jira, :bandwidth, :days_worked
 
+    attr_accessor :project_misc_hours, :internal_hours
+
     def initialize(member_hash)
       @name = member_hash[:name]
       @username = member_hash[:username]
@@ -13,6 +15,8 @@ module Retrospectives
 
       @hours_spent_timesheet = Hash.new(0)
       @hours_spent_jira = Hash.new(0)
+      @project_misc_hours = 0
+      @internal_hours = 0
     end
 
     def expected_sps

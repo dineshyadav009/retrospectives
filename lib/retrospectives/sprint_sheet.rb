@@ -44,6 +44,7 @@ module Retrospectives
         ticket.owner = owner
         ticket.type = type
         ticket.reviewer = reviewer
+        ticket.is_advance_item = false
 
         Retrospectives::logger.debug(" - Adding ticket from sprint sheet #{key}")
 

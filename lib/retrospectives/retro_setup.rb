@@ -8,7 +8,7 @@ module Retrospectives
     attr_accessor :tickets, :sprint_delimiter_index, :retrospective_sheet_key,
     :ticket_id_index, :include_other_tickets, :ignore_issues_for_jira_calls,
     :sprint_id, :sprint_sheet_obj, :get_total_sps, :get_jira_hours,
-    :start_row_for_tickets
+    :start_row_for_tickets, :project_misc_ticket_ids, :company_internal_ticket_ids
 
     @@debug = false
 
@@ -32,6 +32,8 @@ module Retrospectives
       @tickets = Set.new
 
       @ignore_issues_for_jira_calls = Array.new
+      @project_misc_ticket_ids = Array.new
+      @company_internal_ticket_ids = Array.new
     end
 
     def authenticate_google_drive(config_path)
@@ -125,6 +127,16 @@ module Retrospectives
       Retrospectives::logger.info(get_sheet(@retrospective_sheet_key, 0).human_url)
     end
 
+    def get_sheet(sheet_key, index)
+      @google_client.spreadsheet_by_key(sheet_key).worksheets[index]
+    end
+
+    def get_sheets(sheet_key)
+      @google_client.spreadsheet_by_key(sheet_key).worksheets
+    end
+
+    private
+
     def validate_members_array(members_arr)
       s_keys = Set.new
 
@@ -197,9 +209,14 @@ module Retrospectives
         end
 
         @members.each do |member|
-          timesheet_hours_for_member = get_timesheet_hours_for(member, ticket.id)
+          timesheet_hours_for_member = get_timesheet_hours_for(member, ticket.id) || 0
           member_hours_timesheet.push(timesheet_hours_for_member.round(2) || 0)
           total_hours_timesheet += timesheet_hours_for_member
+
+          member.project_misc_hours += timesheet_hours_for_member if is_misc(ticket)
+
+          member.internal_hours += timesheet_hours_for_member if is_internal(ticket)
+
           participants[member.name] = timesheet_hours_for_member unless timesheet_hours_for_member.to_f.zero?
 
           if timesheet_hours_for_member > probable_owner_hours
@@ -232,7 +249,8 @@ module Retrospectives
         ticket_row.push(owner_hours)
         ticket_row.push(ticket.status)
 
-        ticket_row.push('', '') # Comments, Code climate
+        ticket_row.push((ticket.is_advance_item == true) ? 'Advance item' : '')
+        ticket_row.push('') # Code climate
 
         ticket_row.push("#{total_hours_jira.round(2)} (#{ticket.hours_logged['total'].round(2)})") if get_jira_hours == true
         ticket_row.push(total_hours_timesheet.round(2) || 0)
@@ -254,13 +272,13 @@ module Retrospectives
       retro_sheet.update_cells(3, 4, [[@sprint_id, @start_date.to_s, (@end_date - 1).to_s]])
 
       @members.each_with_index do |member, index|
-        row = [member.name, '-', '-', member.hours_spent_timesheet.values.inject(:+), '-', '-'
-         member.expected_sps]
+        row = [member.name, '-', '-', member.hours_spent_timesheet.values.inject(:+),
+          member.project_misc_hours , member.internal_hours, member.expected_sps]
          retro_sheet.update_cells(8 + index, 4, [row])
        end
 
-      # JIRA Delivered SPs
-      retro_sheet[8, 13] = @done_sps_in_this_sprint
+      # JIRA Delivered SPs (now using SUM formula from table)
+      # retro_sheet[8, 13] = @done_sps_in_this_sprint
 
       # JIRA In progress SPs
       retro_sheet[9, 13] = @carry_fwd_sps_in_this_sprint
@@ -268,19 +286,26 @@ module Retrospectives
       # JIRA In progress hours. In UCM, SPs * 4 = estimated hours.
       retro_sheet[10, 13] = (@carry_fwd_sps_in_this_sprint * 4)
 
+      # MISC Ticket SPs and total hours
+      misc_sps = 0
+      misc_hours = 0
+      @tickets.to_a.each do |ticket|
+        if ticket.id.match('^CE-') && @project_misc_ticket_ids.include?(ticket.id)
+          misc_sps += ticket.total_story_points
+          @members.each do |member|
+            misc_hours += (member.hours_spent_timesheet[ticket.id] || 0)
+          end
+        end
+      end
+
+      retro_sheet[13, 5] = misc_sps
+      retro_sheet[13, 7] = misc_hours
+
       retro_sheet.save
     end
 
     def get_timesheet_hours_for(member, ticket_id)
       member.hours_spent_timesheet[ticket_id].to_f
-    end
-
-    def get_sheet(sheet_key, index)
-      @google_client.spreadsheet_by_key(sheet_key).worksheets[index]
-    end
-
-    def get_sheets(sheet_key)
-      @google_client.spreadsheet_by_key(sheet_key).worksheets
     end
 
     def get_tickets(sheet)
@@ -311,6 +336,22 @@ module Retrospectives
       end
 
       return story_points.to_f.round(2) , 0
+    end
+
+    def is_misc(ticket)
+      @project_misc_ticket_ids.each do |description|
+        return true if ticket.id.strip == description
+      end
+
+      false
+    end
+
+    def is_internal(ticket)
+      @company_internal_ticket_ids.each do |description|
+        return true if ticket.id.strip == description
+      end
+
+      false
     end
   end
 end
